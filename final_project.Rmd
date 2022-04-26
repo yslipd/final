@@ -1,0 +1,408 @@
+---
+title: "Final Project"
+author: "Yeseul Lee"
+date: "`r Sys.Date()`"
+documentclass: article
+geometry: margin=1in
+fontsize: 11pt
+output:
+  pdf_document:
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    dev: pdf
+    highlight: tango
+  html_document:
+    theme: default
+    self_contained: true
+    toc: false
+    df_print: kable
+    fig_caption: false
+    number_sections: false
+    smart: true
+    dev: svg
+---
+
+```{r setup, include = FALSE}
+# DO NOT ALTER THIS CHUNK
+# Set knitr options
+knitr::opts_chunk$set(
+  echo = TRUE,
+  eval = TRUE,
+  fig.width = 5,
+  fig.asp = 0.618,
+  out.width = "70%",
+  dpi = 120,
+  fig.align = "center",
+  cache = FALSE
+)
+# Load required packages
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(infer))
+suppressPackageStartupMessages(library(modelr))
+suppressPackageStartupMessages(library(broom))
+# Load dataset
+college <- read_rds("college.rds") %>%
+  type_convert(
+    na=combine("", "NA", "PrivacySuppressed")
+  )
+# Set seed
+set.seed(98261936)
+```
+
+
+```{r}
+college_first6rows <- head(college)
+```
+## Question of Interest
+
+|  The question of interest in this project is, "Is there any relationship between 'Graduation Rates' and 'Tuituion Rates'?". It is an interesting question to ask, because paying tuition is one of the biggest concerns for college students. Tution rate of a college is also one of the major considerations when some senior students in high school decide their college. However, is the burden of tuition, which students feel, is big enough to lead students take longer time for their  graduation?  
+
+|  There must be various reasons that students take longer time to graduate college in real life, but in this project, it will be conducted, assuming that students take several gap semesters or even quit college becuase of the tuition, in purpose of finding out if it is true.
+|  The project will use four variables in total, which are C150_4, TUITIONFEE_IN, TUITIONFEE_OUT, and CONTROL. C150_4 is completion rate for first-time, full-time students at four-year institutions (within 150% of expected time to completion). The reason using this variable is to see if graduation rate within normal time (150% expected time) goes down when tuition rate goes up. TUITIONFEE_IN is in-state tuition and fees and TUITIONFEE_OUT is out-of-state tuition.  
+|  Since there are two tuition fee related variables in the original dataset, in this project, every processes will be conducted twice by using TUITIONFEE_IN and TUITIONFEE_OUT separately. In other words, there will be two separate models: "Graduation Rates(C150_4) vs. Tution fee in state (TUITIONFEE_IN)" and " Graduation Rates(C150_4) vs. Tution fee out of state (TUITIONFEE_OUT)". In addition, CONTROL variable will be used in the Visualization section just to see if there is any difference between the three different types of control of institution; Public, Private for profit, Private nonprofit, as an additional experiment.  
+
+
+## Preprocessing
+
+```{r}
+college_reduced <- college %>%
+  select(C150_4,TUITIONFEE_IN,TUITIONFEE_OUT,CONTROL)
+
+college_reduced_renamed <- college_reduced %>%
+  rename(
+    graduation_rate_1.5_exp_time = "C150_4",
+    tuition_fee_in_state = "TUITIONFEE_IN",
+    tuition_fee_out_of_state = "TUITIONFEE_OUT",
+    control_of_institution = "CONTROL"
+  )
+
+college_re_re_cont_as_char <- college_reduced_renamed %>%
+  mutate(control_char = as.character(control_of_institution)) %>%
+  mutate(control_char = recode(control_char,
+    '1' = "Public",
+    '2' = "Private_nonprofit",
+    '3' = "Private_for_profit")
+  )
+```
+  
+3 new variables are created in this section, step by step, to make the most convenient dataset for this project to be conducted. First, 'college_reduced' is a dataset that selected columns that will be needed only. Second, 'college_reduced_renamed' is a dataset that renamed variables in 'college_reduced', to make the columns' names be easily understood. Third, 'college_re_re_cont_as_char' is a dataset that changed CONTROL variable into character column for convenience, recoding the numbers of '1,2,3' which indicates 'Public, Private_nonprofit, Private_for_profit' respectively.  
+
+
+
+## Visualization  
+
+
+```{r}
+college_reduced_renamed %>%
+  ggplot() + 
+  geom_histogram(mapping = aes(x = tuition_fee_in_state), 
+                 binwidth = 2000) +
+  labs(title = "Distribution of In-State Tuition Fee",
+       x = "In-State Tuition Fee",
+       y = "The Number of Count")
+
+```
+  
+
+
+```{r}
+college_reduced_renamed %>%
+  ggplot() + 
+  geom_histogram(mapping = aes(x = tuition_fee_out_of_state), 
+                 binwidth = 2000) +
+  labs(title = "Distribution of Out-of-State Tuition Fee",
+       x = "Out-of-State Tuition Fee",
+       y = "The Number of Count")
+
+```
+
+```{r}
+college_reduced_renamed %>%
+  ggplot() + 
+  geom_histogram(mapping = aes(x = graduation_rate_1.5_exp_time), binwidth = 0.05) +
+  labs(title = 
+         "Distribution of Graduation rate within 150% Expected Time",
+       x = "Graduation rate within 150% Expected Time",
+       y = "The Number of Count") +
+  theme(plot.title = element_text(size = 12))
+
+```
+  
+
+  
+
+```{r}
+college_re_re_cont_as_char %>%
+  ggplot() +
+  geom_boxplot(aes(x = reorder(control_char, tuition_fee_in_state, FUN = median, 
+                               na.rm = TRUE ), 
+                   y = tuition_fee_in_state)) +
+  labs(title = 
+         "Box Plot of In-State Tuition Fee: Controlling Institution",
+       x = "Controlling Institution",
+       y = "In-State Tuition Fee") +
+  theme(plot.title = element_text(size = 12))
+```
+
+
+```{r}
+college_re_re_cont_as_char %>%
+  ggplot() +
+  geom_boxplot(aes(x = reorder(control_char, tuition_fee_out_of_state, FUN = median,
+                               na.rm = TRUE), 
+                   y = tuition_fee_out_of_state)) +
+  labs(title = 
+         "Box Plot of Out-of-State Tuition Fee: Controlling Institution",
+       x = "Controlling Institution",
+       y = "Out-of-State Tuition Fee") +
+  theme(plot.title = element_text(size = 12))
+```
+
+
+```{r}
+college_re_re_cont_as_char %>%
+  ggplot() +
+  geom_boxplot(aes(x = reorder(control_char, graduation_rate_1.5_exp_time, 
+                               FUN = median,
+                               na.rm = TRUE), 
+                   y = graduation_rate_1.5_exp_time)) +
+  labs(title = 
+         "Box Plot of Graduation Rate within 150% Expected Time: Controlling Institution",
+       x = "Controlling Institution",
+       y = "Graduation Rate (150% expected time)") +
+  theme(plot.title = element_text(size = 8))
+```
+
+
+```{r, fig.width= 10}
+college_re_re_cont_as_char %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = tuition_fee_out_of_state, 
+                           y = graduation_rate_1.5_exp_time, 
+                           color = control_char, 
+                           alpha = 0.3)) +
+  facet_wrap(~ control_char, scales = "free_x") +
+  geom_smooth(mapping = aes(x = tuition_fee_out_of_state, 
+                           y = graduation_rate_1.5_exp_time),
+              method = "lm") +
+  labs(title = "Graduation Rate vs. Tuition rate (1): Out-of-State",
+       x = "Out-of-state Tution & Fees",
+       y = "Graduation Rate within 150% expected period",
+       color = "Control of Institution")+
+  theme(text = element_text(size = 18),
+        axis.text.x = element_text(size = 15, angle = 45, hjust = 1))
+```
+
+```{r, fig.width= 10}
+college_re_re_cont_as_char %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = tuition_fee_in_state, 
+                           y = graduation_rate_1.5_exp_time, 
+                           color = control_char, 
+                           alpha = 0.3)) +
+  facet_wrap(~ control_char, scales = "free_x")  +
+  geom_smooth(mapping = aes(x = tuition_fee_in_state, 
+                           y = graduation_rate_1.5_exp_time), 
+              method = "lm") +
+  labs(title = "Graduation Rate vs. Tuition rate (2): In-State",
+       x = "In-State Tution & Fees",
+       y = "Graduation Rate within 150% expected period",
+       color = "Control of Institution")+
+  theme(text = element_text(size = 18),
+        axis.text.x = element_text(size = 15, angle = 45, hjust = 1))
+```
+
+## Summary Statistics  
+
+
+
+
+```{r}
+grad_1.5_sum <- college_reduced_renamed %>%
+  summarize(
+    count = n(),
+    mean = mean(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    median = median(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    std.dev = sd(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    iqr = IQR(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    min = min(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    max = max(graduation_rate_1.5_exp_time, na.rm = TRUE),
+    not_applicable = sum(is.na(graduation_rate_1.5_exp_time))
+  )
+```
+
+```{r}
+grad_tuition_in_sum <- college_reduced_renamed %>%
+  summarize(
+    count = n(),
+    mean = mean(tuition_fee_in_state, na.rm = TRUE),
+    median = median(tuition_fee_in_state, na.rm = TRUE),
+    std.dev = sd(tuition_fee_in_state, na.rm = TRUE),
+    iqr = IQR(tuition_fee_in_state, na.rm = TRUE),
+    min = min(tuition_fee_in_state, na.rm = TRUE),
+    max = max(tuition_fee_in_state, na.rm = TRUE),
+    not_applicable = sum(is.na(tuition_fee_in_state))
+  )
+```
+
+```{r}
+grad_tuition_out_sum <- college_reduced_renamed %>%
+  summarize(
+    count = n(),
+    mean = mean(tuition_fee_out_of_state, na.rm = TRUE),
+    median = median(tuition_fee_out_of_state, na.rm = TRUE),
+    std.dev = sd(tuition_fee_out_of_state, na.rm = TRUE),
+    iqr = IQR(tuition_fee_out_of_state, na.rm = TRUE),
+    min = min(tuition_fee_out_of_state, na.rm = TRUE),
+    max = max(tuition_fee_out_of_state, na.rm = TRUE),
+    not_applicable = sum(is.na(tuition_fee_out_of_state))
+  )
+```
+
+
+## Data Analysis
+
+```{r}
+graduation_tution_in_model <- 
+  lm(graduation_rate_1.5_exp_time ~ tuition_fee_in_state,
+                                 data = college_reduced_renamed)
+
+graduation_tution_out_model <- 
+  lm(graduation_rate_1.5_exp_time ~ tuition_fee_out_of_state,
+                                 data = college_reduced_renamed)
+```
+  
+In the code chunck above, two linear models are created using 'lm' function. One is for to see the relationship between the 'Graduation rate within 150 % expected time' and the 'In-state tuition fee'. And the other is to see the relationship between the 'Graduation rate within 150 % expected time' and the 'Out-of-state tuition fee'.  
+
+
+```{r}
+graduation_tution_in_model %>%
+  tidy()
+```
+
+```{r}
+graduation_tution_in_model_table <- graduation_tution_in_model %>%
+  glance()
+```
+
+```{r}
+graduation_tution_in_model_table %>%
+  select(r.squared:p.value)
+```
+
+In the code chunks above, The first model is organized by using 'tidy' function, and then formatted as a table by using 'glance' function. And the last chunck is just to show some parts of table's result.  
+
+```{r}
+graduation_tution_out_model %>%
+  tidy()
+```
+
+```{r}
+graduation_tution_out_model_table <- graduation_tution_out_model %>%
+  glance()
+```
+
+```{r}
+graduation_tution_out_model_table %>%
+  select(r.squared:p.value)
+```
+
+|  In the code chunks above, The second model is organized by using 'tidy' function, and then formatted as a table by using 'glance' function. And the last chunck is just to show some parts of table's result.  
+
+|  According to the r.squared value, it is able to know that 'graduation_tuition_out_model' fit more than 'graduation_tuition_in_model'.  
+
+
+
+```{r}
+graduation_tution_in_df <- college_reduced_renamed %>%
+  add_predictions(graduation_tution_in_model) %>%
+  add_residuals(graduation_tution_in_model)
+```
+
+```{r}
+graduation_tution_out_df <- college_reduced_renamed %>%
+  add_predictions(graduation_tution_out_model) %>%
+  add_residuals(graduation_tution_out_model)
+```
+
+In the code chuncks above, predictions and residuals columns are created for each dataframe.  
+
+```{r}
+graduation_tution_in_df %>%
+  ggplot() +
+  geom_point(mapping = aes(x = pred, 
+                           y = graduation_rate_1.5_exp_time)) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "red") +
+  labs(title = "Observed vs. Predicted Plot",
+       x = "Predicted",
+       y = "Observed")
+```
+
+```{r}
+graduation_tution_out_df %>%
+  ggplot() +
+  geom_point(mapping = aes(x = pred, 
+                           y = graduation_rate_1.5_exp_time)) +
+  geom_abline(slope = 1, 
+              intercept = 0, 
+              color = "blue") +
+  labs(title = "Observed vs. Predicted Plot",
+       x = "Predicted",
+       y = "Observed")
+```
+  
+According to the created plots above, it is able to know that both plots are pretty linear, and the second plot which is using 'graduation_tuition_out_df' has slightly better linearity.  
+
+```{r}
+graduation_tution_in_df %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = pred, y = resid)) +
+  geom_hline(yintercept = 0, color = "red") +
+  labs(title = "Residuals vs. Predicted",
+       x = "Predicted",
+       y = "Residuals")
+
+```
+
+```{r}
+graduation_tution_out_df %>%
+  ggplot() + 
+  geom_point(mapping = aes(x = pred, y = resid)) +
+  geom_hline(yintercept = 0, color = "blue") +
+  labs(title = "Residuals vs. Predicted",
+       x = "Predicted",
+       y = "Residuals")
+
+```
+  
+The plots above are showing that the variability of residuals are constant above and below the reference line, enough. Therefore, they have constant variabilities in the residuals.  
+
+
+```{r}
+graduation_tution_in_df %>%
+  ggplot() +
+  geom_qq(aes(sample = resid)) +
+  geom_qq_line(aes(sample = resid)) +
+  labs(title = "QQ Plot")
+```
+
+```{r}
+graduation_tution_out_df %>%
+  ggplot() +
+  geom_qq(aes(sample = resid)) +
+  geom_qq_line(aes(sample = resid)) +
+  labs(title = "QQ Plot")
+```
+  
+|  According to the created two plots, it is able to know that both of two data are normally distributed, because most of the points are on the line.  
+  
+|  In this section, linearity, constant variabilities in the residual, and normally distributed data are all observed, which means both of the two models don't violate any of the linear model's three assumptions. Therefore, it was able to know that these linear models are reliable, and there is a relationship between 'Graduation rate within 150% expected time' and 'Tuition Rates'.  
+  
+## Conclusion  
+
+|  In the Data Analysis, it was able to know that both of the two models are not violating any  of three linear models' assumptions. So, the answer for the original question written in the introduction section is "Yes, there is a relationship between Graduation rates and Tuition rates" of college.  
+
